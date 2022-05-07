@@ -1,0 +1,209 @@
+# Import your dependencies.
+import numpy as np
+import io
+import sys
+import logging
+import os
+import argparse
+
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torchvision
+import torchvision.models as models
+import torchvision.transforms as transforms
+from torchvision.datasets import ImageFolder
+
+from PIL import Image
+from PIL import ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
+
+
+from smdebug.pytorch import get_hook
+from smdebug import modes
+import smdebug.pytorch as smd
+
+
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler(sys.stdout))
+
+    
+def test(model, test_loader, criterion, device, hook):
+    '''
+    This function can take a model and a 
+          testing data loader and will get the test accuray of the model
+    '''
+    print("START TESTING")
+    model.eval()
+    test_loss = 0
+    correct = 0
+    if hook:
+        hook.set_mode(modes.EVAL)
+    with torch.no_grad():
+        for data, target in test_loader:
+            data=data.to(device)
+            target=target.to(device)
+            output = model(data)
+            test_loss += criterion(output, target).item()  # sum up batch loss
+            pred = output.max(1, keepdim=True)[1]  # get the index of the max log-probability
+            correct += pred.eq(target.view_as(pred)).sum().item()
+
+    test_loss /= len(test_loader.dataset)
+    logger.info(
+        "Test set: Accuracy: {:.0f}% ({}/{})\n".format(
+            100.0 * correct / len(test_loader.dataset), correct, len(test_loader.dataset)
+        )
+    )
+       
+    pass
+
+
+def train(model, train_loader, criterion, optimizer, epoch, device, hook):
+    '''
+    This function can take a model and
+          data loaders for training and will train the model
+    '''   
+        
+    model.train()
+    for e in range(epoch):
+        print("START TRAINING")
+        if hook:
+            hook.set_mode(modes.TRAIN)
+        running_loss=0
+        correct=0
+        for data, target in train_loader:
+            data=data.to(device)
+            target=target.to(device)
+            optimizer.zero_grad()
+            pred = model(data)             #No need to reshape data since CNNs take image inputs
+            loss = criterion(pred, target)
+            running_loss+=loss.item() * data.size(0)
+            loss.backward()
+            optimizer.step()
+            pred=pred.argmax(dim=1, keepdim=True)
+            correct += pred.eq(target.view_as(pred)).sum().item()
+        print(f"Epoch {e}: Loss {running_loss/len(train_loader.dataset)}, \
+             Accuracy {100*(correct/len(train_loader.dataset))}%")
+    
+    pass
+
+
+    
+def net():
+    # Complete this function that initializes model to use a pretrained model
+    
+    model = models.resnet18(pretrained=True)
+
+    for param in model.parameters():
+        param.requires_grad = False   
+
+    num_features=model.fc.in_features
+    model.fc = nn.Sequential(
+                   nn.Linear(num_features, 133))
+    
+    return model
+
+def create_data_loaders(traindir, testdir, batch_size, test_batch_size):
+    '''
+    This is an optional function that you may or may not need to implement
+    depending on whether you need to use data loaders or not
+    '''
+    
+    training_transform = transforms.Compose([
+        transforms.Resize((224,224)),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+
+    testing_transform = transforms.Compose([
+        transforms.Resize((224,224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+
+    trainset = ImageFolder(traindir, transform=training_transform)
+    testset = ImageFolder(testdir, transform=testing_transform)
+
+    logger.info("Batch Size {}".format(args.batch_size))
+    logger.info("Batch Size {}".format(args.test_batch_size))
+    
+    train_loader = torch.utils.data.DataLoader(trainset, batch_size, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(testset, test_batch_size, shuffle=True)
+
+    return train_loader, test_loader
+    
+    pass
+
+def main(args):
+    # Initialize a model by calling the net function
+
+    model=net()
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Running on Device {device}")
+    model.to(device)
+    
+    # Create train and test loaders
+    train_loader,test_loader =  create_data_loaders(args.data_dir, args.test_data_dir, args.batch_size, args.test_batch_size)
+    
+    # Create a hook if not exist
+    hook = smd.Hook.create_from_json_file()
+    hook.register_hook(model)    
+    
+    # Create your loss and optimizer
+    loss_criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
+    
+    if hook:
+        hook.register_loss(loss_criterion)
+    
+    # Call the train function to start training your model, training data fetched from S3 using channel
+    train(model, train_loader, loss_criterion, optimizer,args.epochs, device, hook)
+    
+    # Test the model to see its accuracy
+    test(model, test_loader, loss_criterion, device, hook)
+    
+    # Save the trained model
+    print(f"Model Save Directory is {args.model_dir}")
+
+    path = os.path.join(args.model_dir, "model.pth")
+    torch.save(model.state_dict(), path)
+
+if __name__=='__main__':
+    parser=argparse.ArgumentParser()
+    '''
+    Specify all the hyperparameters needed to train the model.
+    '''
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=64,
+        metavar="N",
+        help="input batch size for training (default: 64)",
+    )
+    parser.add_argument(
+        "--test-batch-size",
+        type=int,
+        default=10,
+        metavar="N",
+        help="input batch size for testing (default: 10)",
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=2,
+        metavar="N",
+        help="number of epochs to train (default: 14)",
+    )
+    parser.add_argument(
+        "--lr", type=float, default=1.0, metavar="LR", help="learning rate (default: 1.0)"
+    )
+    parser.add_argument("--data-dir", type=str, default=os.environ["SM_CHANNEL_TRAINING"])
+    parser.add_argument("--test-data-dir", type=str, default=os.environ["SM_CHANNEL_TEST"])
+    parser.add_argument("--model-dir", type=str, default=os.environ["SM_MODEL_DIR"])
+    args=parser.parse_args()
+    
+    main(args)

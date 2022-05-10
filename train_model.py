@@ -96,14 +96,18 @@ def train(model, train_loader, criterion, optimizer, epoch, device, hook):
 def net():
     # Complete this function that initializes model to use a pretrained model
     
-    model = models.resnet18(pretrained=True)
+    model = models.resnet50(pretrained=True)
 
     for param in model.parameters():
         param.requires_grad = False   
 
     num_features=model.fc.in_features
     model.fc = nn.Sequential(
-                   nn.Linear(num_features, 133))
+            nn.Linear(num_features, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 512),
+            nn.ReLU(),
+            nn.Linear(512, 133))
     
     return model
 

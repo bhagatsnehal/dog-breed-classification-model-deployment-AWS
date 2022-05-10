@@ -52,7 +52,7 @@ def test(model, test_loader, criterion, device):
 
     test_loss /= len(test_loader.dataset)
     logger.info(
-        "Test set: Loss: {:.0f}%\n".format(test_loss)
+        "Test set: Loss: {:.4f}\n".format(test_loss)
         )
     logger.info(
         "Test set: Accuracy: {:.0f}% ({}/{})\n".format(
@@ -93,32 +93,27 @@ def train(model, train_loader, criterion, optimizer, epoch, device):
 def net():
     # Complete this function that initializes model to use a pretrained model
     
-    model = models.resnet18(pretrained=True)
+    model = models.resnet50(pretrained=True)
 
     for param in model.parameters():
         param.requires_grad = False   
 
-    num_features=model.fc.in_features
+    num_features=model.fc.in_features   # resnet50 has 2048 output neurons
+    print(f"Number of features : {num_features}")
     model.fc = nn.Sequential(
-                   nn.Linear(num_features, 133))
+            nn.Linear(num_features, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 512),
+            nn.ReLU(),
+            nn.Linear(512, 133))
     
     return model
 
-def create_data_loaders(data, batch_size):
+def create_data_loaders(traindir, testdir, batch_size, test_batch_size):
     '''
     This is an optional function that you may or may not need to implement
     depending on whether you need to use data loaders or not
     '''
-    pass
-
-def main(args):
-    # Initialize a model by calling the net function
-
-    model=net()
-    
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    print(f"Running on Device {device}")
-    model.to(device)
     training_transform = transforms.Compose([
         transforms.Resize((224,224)),
         transforms.RandomHorizontalFlip(p=0.5),
@@ -130,15 +125,28 @@ def main(args):
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
-    trainset = ImageFolder(args.data_dir, transform=training_transform)
-    testset = ImageFolder(args.test_data_dir, transform=testing_transform)
+    trainset = ImageFolder(traindir, transform=training_transform)
+    testset = ImageFolder(testdir, transform=testing_transform)
 
     logger.info("Batch Size {}".format(args.batch_size))
     
-    train_loader = torch.utils.data.DataLoader(trainset, batch_size=args.batch_size, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(testset, batch_size=args.batch_size, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(trainset, batch_size=batch_size, shuffle=True)
+    test_loader = torch.utils.data.DataLoader(testset, batch_size=test_batch_size, shuffle=True)
 
+    return train_loader, test_loader
+
+    pass
+
+def main(args):
+    # Initialize a model by calling the net function
+
+    model=net()
     
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    print(f"Running on Device {device}")
+    model.to(device)
+    
+    train_loader, test_loader = create_data_loaders(args.data_dir, args.test_data_dir, args.batch_size, args.test_batch_size)
     # Create your loss and optimizer
     loss_criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adadelta(model.parameters(), lr=args.lr)

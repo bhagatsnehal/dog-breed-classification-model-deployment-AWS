@@ -60,6 +60,10 @@ code/requirements.txt --> dependencies to install when initializing the instance
 ## QUERYING AN ENDPOINT SAMPLE
 -----------------------------------------------------------------------------------------------------
 
+Deployed endpoint in service
+
+![endpoint](images/Endpoint.png)
+
 Code sample for querying a model endpoint
 
 ![model_prediction](images/Predict.png)

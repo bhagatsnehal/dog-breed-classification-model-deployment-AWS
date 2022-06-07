@@ -5,7 +5,7 @@
 
 The ultimate goal of this project is to predict dog breeds from corresponding images of dogs.
 
-While this is a straightforward project requirement, efforts have been made to incorporate elements of hyperparamter tuning and optimization, debugging & profiling, transfer learning, endpoint deployment and inferencing in the solution.
+While this is a straightforward project requirement, efforts have been made to incorporate elements of hyperparameter tuning and optimization, debugging & profiling, transfer learning, endpoint deployment and inferencing in the solution.
 
 Thus the underlying purpose being to get accustomed with the various Sagemaker features viz. HyperparameterTuner, Estimator, DebuggerHookConfig, ProfilerConfig, Predictor.
 
@@ -106,5 +106,3 @@ https://machinelearningmastery.com/learning-curves-for-diagnosing-machine-learni
 -----------------------------------------------------------------------------------------------------
 
 Credits to Udacity for the [DogImages Dataset](https://s3-us-west-1.amazonaws.com/udacity-aind/dog-project/dogImages.zip) and the guidelines to complete this project as part of the AWS ML Engineer Nanodegree Program
-
-You can add a README file to your repository to tell other people why your project is useful, what they can do with your project, and how they can use it.
